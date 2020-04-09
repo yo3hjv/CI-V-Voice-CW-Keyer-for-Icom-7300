@@ -1,0 +1,667 @@
+/*
+   CI-V Voice/Morse keyer
+   Version 1.1
+   
+   https://yo3hjv.blogspot.com/2020/04/cw-and-voice-memory-keyer-for-icom-ic.html
+   
+   This is a CW memory keyer for ICOM CI-V radios.
+   It was tested on IC-7300 and it is working well.
+   It was tested on IC-703 and was find not compatible.
+   Many thanks for inspiring the structure to KEN - KC9UMR.
+
+   The 4 x 4 keypad is able to send:
+   -In CW, 10 preprogrammed CW messages, each of 128 bytes;
+   -in SSB, AM, FM, 8 prerecorded voice messages
+   -"A" is Power ON
+   -"B" is Power OFF
+   -"C" is TUNE
+
+   The rest will be defined later on other versions.
+
+   
+   This was a good opportunity for me to learn to use Arrays and Switch/case
+   Many thanks for the whole community from where I learned!
+   Thanks also to our wise government for keeping us at home...
+
+   de Adrian Florescu, YO3HJV. April, 2020
+   
+
+   This code is released under the EUPL v1.2.
+
+*/
+
+#include <SoftwareSerial.h>
+#include <Keypad.h>
+
+SoftwareSerial CAT(RX, TX); // RX, TX
+
+
+const byte numRows = 4;
+const byte numCols = 4;
+byte keymap[numRows][numCols] = 
+{ {'1', '2', '3', 'A'},
+{'4', '5', '6', 'B'},
+{'7', '8', '9', 'C'},
+{'*', '0', '#', 'D'}
+};
+
+byte rowPins[numRows] = {9, 8, 7, 6}; //Rows 0 to 3
+byte colPins[numCols] = {5, 4, 3, 2}; //Columns 0 to 3
+//initializes an instance of the Keypad class
+Keypad myKeypad = Keypad(makeKeymap(keymap), rowPins, colPins, numRows, numCols);
+
+/*
+   When sending the power ON commandCW (18 01), you need
+  to repeatedly send “FE” before the standard format. The
+  following values for pON has to be observed.
+  ••115200 bps: 150 “FE”s
+  ••57600 bps: 75 “FE”s
+  ••38400 bps: 50 “FE”s
+  ••19200 bps: 25 “FE”s
+  ••9600 bps: 13 “FE”s
+  ••4800 bps: 7 “FE”s
+*/
+
+#define START_BYTE   0xFE            // Start byte
+#define STOP_BYTE    0xFD            // Stop byte
+#define SEND_CW      0x17            
+#define VOICE_MEM    0x28            
+#define ZERO         byte(0x00)
+#define CONTROLLER_ADDRESS  0xE3     // The hex adress of the Arduino controller
+char toSend;    
+byte asciiCW;   
+byte i;       
+byte j;        
+byte n = 1;     // variable. how many times the message is repeated. TBD
+int RPTint;     // Memory repeat interval. TBD
+byte p;         
+byte pON = 180;
+char key;  
+byte radio;
+
+byte voiceMem1 = 0x01;
+byte voiceMem2 = 0x02;
+byte voiceMem3 = 0x03;
+byte voiceMem4 = 0x04;
+byte voiceMem5 = 0x05;
+byte voiceMem6 = 0x06;
+byte voiceMem7 = 0x07;
+byte voiceMem8 = 0x08;
+byte vMem;
+
+/*
+ * The following are USER-DEFINED values.
+ * The values are to be modified according to the settings on the radio
+ */
+
+
+#define RADIO_ADDRESS       0x94     //  ic7300 has default address 0x94
+#define CAT_BAUDRATE 19200           // Arduino to radio Baudrate on CI-V interface
+#define RX 11                        // CAT RX on Arduino UNO for software serial
+#define TX 12                        // CAT TX on Arduini UNO for software serial
+
+
+ // THIS ARE THE PRESET CW MESSAGES TO BE SENT
+ // both Upper-case or Lower-case letters can be used and the following symbols
+ //               * . , ! ? / = ( ) [SPACE] _ -  
+ 
+char msg_1[] = "CQ CQ DE YO3HJV yo3hjv";                         // max lenght 128
+char msg_2[] = "YO3HJV";                                         // max lenght 128
+char msg_3[] = "5NN 5NN TU 73 DE YO3HJV KN";                     // max lenght 128
+char msg_4[] = "QRL? QRL? DE YO3HJV K";                          // max lenght 128
+char msg_5[] = "R R = OP HR ADI ADI BK";                         // max lenght 128
+char msg_6[] = "NAME ADI ADI ADI BTU"                            // max lenght 128
+char msg_7[] = "CQ";                                             // max lenght 128
+char msg_8[] = "= TNX FER QSO = GL HP CU AGN 73 DE YO3HJV";      // max lenght 128
+char msg_9[] = "5NN 5NN TU 73 K";                                // max lenght 128
+char msg_0[] = "V";
+
+
+void setup() {
+  Serial.begin(19200);
+  CAT.begin(CAT_BAUDRATE);            // set the data rate for the Software Serial port
+  delay(2);
+  CAT.flush();
+}
+
+
+void loop() {
+  checkPad();   
+}
+
+
+void checkPad() {
+  // This is where the magic is happening
+  char keypressed = myKeypad.getKey(); 
+  if (keypressed != NO_KEY) {
+    key = keypressed;
+       switch (key) {
+
+      ///////////   NUMBERS  ///////////
+          case '1':
+            for (byte j = 0; j < n; j++) {
+              sendMem1();
+              vMem = voiceMem1;
+              sendVoice();
+                     }
+            break;
+          case '2':
+            for (byte j = 0; j < n; j++) {
+              sendMem2();
+              vMem = voiceMem2;
+              sendVoice();
+                     }
+            break;
+          case '3':
+            for (byte j = 0; j < n; j++) {
+              sendMem3();
+              vMem = voiceMem3;
+              sendVoice();
+                     }
+            break;
+          case '4':
+            for (byte j = 0; j < n; j++) {
+              sendMem4();
+              vMem = voiceMem4;
+              sendVoice();
+                     }
+            break;
+          case '5':
+            for (byte j = 0; j < n; j++) {
+              sendMem5();
+              vMem = voiceMem5;
+              sendVoice();
+                    }
+            break;
+          case '6':
+            for (byte j = 0; j < n; j++) {
+              sendMem6();
+              vMem = voiceMem6;
+              sendVoice();
+                     }
+            break;
+    
+          case '7':
+            for (byte j = 0; j < n; j++) {
+              sendMem7();
+              vMem = voiceMem7;
+              sendVoice();
+                   }
+            break;
+    
+          case '8':
+            for (byte j = 0; j < n; j++) {
+              sendMem8();
+              vMem = voiceMem8;
+              sendVoice();
+                     }
+            break;
+    
+          case '9':
+            for (byte j = 0; j < n; j++) {
+              sendMem9();
+                     }
+            break;
+    
+          case '0':
+            for (byte j = 0; j < n; j++) {
+              sendMem0();
+                    }
+       //////////////////// LETTERS //////////////////////
+            break;
+          case 'A':
+            for (byte j = 0; j < n; j++) {
+              powerON();
+                }
+            break;
+            
+          case 'B':
+            for (byte j = 0; j < n; j++) {
+              powerOFF();
+                    }
+            break;
+    
+          case 'C':
+            for (byte j = 0; j < n; j++) {
+              ATUne();
+                   }
+            break;
+    
+          case 'D':
+            for (byte j = 0; j < n; j++) {
+             // something ;
+                 }
+            break;
+          case '*':
+            for (byte j = 0; j < n; j++) {
+              // something();
+                     }
+            break;
+          case '#':
+            for (byte j = 0; j < n; j++) {
+              // something();
+                     }
+            break;
+
+    }// End of SWITCH
+  }
+}
+
+
+
+void sendVoice(){
+   send_preamble();
+   commandVOICE();
+   send_post();
+}
+
+
+void sendMem0() {
+  for (byte i = 0; i < sizeof(msg_0) - 1; i++) {
+    toSend = msg_0[i];
+    send_preamble();
+    commandCW();
+    send_CW();
+    send_post();
+  }
+}
+
+
+void sendMem1() {
+  for (byte i = 0; i < sizeof(msg_1) - 1; i++) {
+    toSend = msg_1[i];
+    send_preamble();
+    commandCW();
+    send_CW();
+    send_post();
+  }
+}
+
+void sendMem2() {
+  for (byte i = 0; i < sizeof(msg_2) - 1; i++) {
+    toSend = msg_2[i];
+    send_preamble();
+    commandCW();
+    send_CW();
+    send_post();
+  }
+}
+
+void sendMem3() {
+  for (byte i = 0; i < sizeof(msg_3) - 1; i++) {
+    toSend = msg_3[i];
+    send_preamble();
+    commandCW();
+    send_CW();
+    send_post();
+  }
+}
+
+void sendMem4() {
+  for (byte i = 0; i < sizeof(msg_4) - 1; i++) {
+    toSend = msg_4[i];
+    send_preamble();
+    commandCW();
+    send_CW();
+    send_post();
+  }
+}
+
+
+void sendMem5() {
+  for (byte i = 0; i < sizeof(msg_5) - 1; i++) {
+    toSend = msg_5[i];
+    send_preamble();
+    commandCW();
+    send_CW();
+    send_post();
+  }
+}
+
+void sendMem6() {
+  for (byte i = 0; i < sizeof(msg_6) - 1; i++) {
+    toSend = msg_6[i];
+    send_preamble();
+    commandCW();
+    send_CW();
+    send_post();
+  }
+}
+
+void sendMem7() {
+  for (byte i = 0; i < sizeof(msg_7) - 1; i++) {
+    toSend = msg_7[i];
+    send_preamble();
+    commandCW();
+    send_CW();
+    send_post();
+  }
+}
+
+void sendMem8() {
+  for (byte i = 0; i < sizeof(msg_8) - 1; i++) {
+    toSend = msg_8[i];
+    send_preamble();
+    commandCW();
+    send_CW();
+    send_post();
+  }
+}
+
+void sendMem9() {
+  for (byte i = 0; i < sizeof(msg_9) - 1; i++) {
+    toSend = msg_9[i];
+    send_preamble();
+    commandCW();
+    send_CW();
+    send_post();
+  }
+}
+
+void ATUne(){
+  send_preamble();
+  CAT.write(0x1C);
+  CAT.write(01);
+  CAT.write(02);
+  send_post();
+}
+
+void commandCW() {
+  CAT.write(SEND_CW);
+}
+
+void commandVOICE(){
+  CAT.write(VOICE_MEM);
+  CAT.write(ZERO);
+  CAT.write(vMem);
+}
+
+void send_CW() {
+  ASCIItoHEX();
+  CAT.write(asciiCW);
+}
+
+void send_preamble()
+{
+  CAT.write(0xFE);      
+  CAT.write(0xFE);      
+  CAT.write(RADIO_ADDRESS);       
+  CAT.write(CONTROLLER_ADDRESS);     
+}
+
+void send_post()
+{
+  CAT.write(0xFD);    
+  CAT.flush(); 
+}
+
+
+////////////////////// Here is ASCII to ICOM HEX ASCII  ///////////////////////////////
+
+void ASCIItoHEX () {
+  switch (toSend) {
+    //////////////////////////////  NUMBERS ///////////////////////
+    case '0':
+      asciiCW = 0x30;
+      break;
+    case '1':
+      asciiCW = 0x31;
+      break;
+    case '2':
+      asciiCW = 0x32;
+      break;
+    case '3':
+      asciiCW = 0x33;
+      break;
+    case '4':
+      asciiCW = 0x34;
+      break;
+    case '5':
+      asciiCW = 0x35;
+      break;
+    case '6':
+      asciiCW = 0x36;
+      break;
+    case '7':
+      asciiCW = 0x37;
+      break;
+    case '8':
+      asciiCW = 0x38;
+      break;
+    case '9':
+      asciiCW = 0x39;
+      break;
+
+    ////////////////////////////// SYMBOLS ////////////////////////
+
+    case ' ' :
+      asciiCW = 0x20;
+      break;
+    case '*':   // This is to insert CONTEST NUMBER
+      asciiCW = 0x2A;
+      break;
+    case '/':
+      asciiCW = 0x2F;
+      break;
+    case '-':
+      asciiCW = 0x2D;
+      break;
+    case '?':
+      asciiCW = 0x3F;
+      break;
+    case ',':
+      asciiCW = 0x2C;
+      break;
+    case '.':
+      asciiCW = 0x2E;
+      break;
+    case '@':
+      asciiCW = 0x40;
+      break;
+    case '=':
+      asciiCW = 0x3D;
+      break;
+    case '!':
+      asciiCW = 0x21;
+      break;
+    case '(':
+      asciiCW = 0x28;
+      break;
+    case ')':
+      asciiCW = 0x29;
+      break;
+    case '"':
+      asciiCW = 0x22;
+      break;
+    case '#':
+      asciiCW = 0x23;
+      break;
+    case '_':
+      asciiCW = 0x5F;
+      break;
+
+    ////////////////////// UPPER-CASE  LETTERS /////////////////////////////
+
+    case 'A':
+      asciiCW = 0x41;
+      break;
+    case 'B':
+      asciiCW = 0x42;
+      break;
+    case 'C':
+      asciiCW = 0x43;
+      break;
+    case 'D':
+      asciiCW = 0x44;
+      break;
+    case 'E':
+      asciiCW = 0x45;
+      break;
+    case 'F':
+      asciiCW = 0x46;
+      break;
+    case 'G':
+      asciiCW = 0x47;
+      break;
+    case 'H':
+      asciiCW = 0x48;
+      break;
+    case 'I':
+      asciiCW = 0x49;
+      break;
+    case 'J':
+      asciiCW = 0x4A;
+      break;
+    case 'K':
+      asciiCW = 0x4B;
+      break;
+    case 'L':
+      asciiCW = 0x4C;
+      break;
+    case 'M':
+      asciiCW = 0x4D;
+      break;
+    case 'N':
+      asciiCW = 0x4E;
+      break;
+    case 'O':
+      asciiCW = 0x4F;
+      break;
+    case 'P':
+      asciiCW = 0x50;
+      break;
+    case 'Q':
+      asciiCW = 0x51;
+      break;
+    case 'R':
+      asciiCW = 0x52;
+      break;
+    case 'S':
+      asciiCW = 0x53;
+      break;
+    case 'T':
+      asciiCW = 0x54;
+      break;
+    case 'U':
+      asciiCW = 0x55;
+      break;
+    case 'V':
+      asciiCW = 0x56;
+      break;
+    case 'W':
+      asciiCW = 0x57;
+      break;
+    case 'X':
+      asciiCW = 0x58;
+      break;
+    case 'Y':
+      asciiCW = 0x59;
+      break;
+    case 'Z':
+      asciiCW = 0x5A;
+      break;
+
+      /////////////////////   LOWER CASE LETTERS  ////////////////////////////////
+    case 'a':
+      asciiCW = 0x41;
+      break;
+    case 'b':
+      asciiCW = 0x42;
+      break;
+    case 'c':
+      asciiCW = 0x43;
+      break;
+    case 'd':
+      asciiCW = 0x44;
+      break;
+    case 'e':
+      asciiCW = 0x45;
+      break;
+    case 'f':
+      asciiCW = 0x46;
+      break;
+    case 'g':
+      asciiCW = 0x47;
+      break;
+    case 'h':
+      asciiCW = 0x48;
+      break;
+    case 'i':
+      asciiCW = 0x49;
+      break;
+    case 'j':
+      asciiCW = 0x4A;
+      break;
+    case 'k':
+      asciiCW = 0x4B;
+      break;
+    case 'l':
+      asciiCW = 0x4C;
+      break;
+    case 'm':
+      asciiCW = 0x4D;
+      break;
+    case 'n':
+      asciiCW = 0x4E;
+      break;
+    case 'o':
+      asciiCW = 0x4F;
+      break;
+    case 'p':
+      asciiCW = 0x50;
+      break;
+    case 'q':
+      asciiCW = 0x51;
+      break;
+    case 'r':
+      asciiCW = 0x52;
+      break;
+    case 's':
+      asciiCW = 0x53;
+      break;
+    case 't':
+      asciiCW = 0x54;
+      break;
+    case 'u':
+      asciiCW = 0x55;
+      break;
+    case 'v':
+      asciiCW = 0x56;
+      break;
+    case 'w':
+      asciiCW = 0x57;
+      break;
+    case 'x':
+      asciiCW = 0x58;
+      break;
+    case 'y':
+      asciiCW = 0x59;
+      break;
+    case 'z':
+      asciiCW = 0x5A;
+      break;
+  }
+  delay(1);  // For stability
+}
+
+
+
+void powerON() {
+  for (byte p = 0; p <= pON; p++) {
+    CAT.write(0xFE);       // preamble is sent multiple times 
+  }
+    send_preamble();
+    CAT.write(0x18);
+    CAT.write(0x01);
+    send_post();
+
+}
+
+void powerOFF() {
+  send_preamble();
+  CAT.write(0x18);
+  CAT.write(ZERO);
+  send_post();
+}
+
+
