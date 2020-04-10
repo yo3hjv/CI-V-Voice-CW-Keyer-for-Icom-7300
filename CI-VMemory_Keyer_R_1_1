@@ -33,9 +33,6 @@
 #include <SoftwareSerial.h>
 #include <Keypad.h>
 
-SoftwareSerial CAT(RX, TX); // RX, TX
-
-
 const byte numRows = 4;
 const byte numCols = 4;
 byte keymap[numRows][numCols] = 
@@ -97,10 +94,10 @@ byte vMem;
 
 #define RADIO_ADDRESS       0x94     //  ic7300 has default address 0x94
 #define CAT_BAUDRATE 19200           // Arduino to radio Baudrate on CI-V interface
-#define RX 11                        // CAT RX on Arduino UNO for software serial
-#define TX 12                        // CAT TX on Arduini UNO for software serial
+#define RX 12                        // CAT RX on Arduino UNO for software serial
+#define TX 13                        // CAT TX on Arduini UNO for software serial
 
-
+SoftwareSerial CAT(RX, TX); // RX, TX
  // THIS ARE THE PRESET CW MESSAGES TO BE SENT
  // both Upper-case or Lower-case letters can be used and the following symbols
  //               * . , ! ? / = ( ) [SPACE] _ -  
@@ -110,7 +107,7 @@ char msg_2[] = "YO3HJV";                                         // max lenght 1
 char msg_3[] = "5NN 5NN TU 73 DE YO3HJV KN";                     // max lenght 128
 char msg_4[] = "QRL? QRL? DE YO3HJV K";                          // max lenght 128
 char msg_5[] = "R R = OP HR ADI ADI BK";                         // max lenght 128
-char msg_6[] = "NAME ADI ADI ADI BTU"                            // max lenght 128
+char msg_6[] = "NAME ADI ADI ADI BTU";                           // max lenght 128
 char msg_7[] = "CQ";                                             // max lenght 128
 char msg_8[] = "= TNX FER QSO = GL HP CU AGN 73 DE YO3HJV";      // max lenght 128
 char msg_9[] = "5NN 5NN TU 73 K";                                // max lenght 128
@@ -118,7 +115,8 @@ char msg_0[] = "V";
 
 
 void setup() {
-  Serial.begin(19200);
+
+   Serial.begin(19200);
   CAT.begin(CAT_BAUDRATE);            // set the data rate for the Software Serial port
   delay(2);
   CAT.flush();
@@ -663,5 +661,3 @@ void powerOFF() {
   CAT.write(ZERO);
   send_post();
 }
-
-
